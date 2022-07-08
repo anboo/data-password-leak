@@ -11,5 +11,6 @@ func main() {
 	app := cmd.NewApp(ctx)
 	app.RegisterCommand(cmd.ImportCmd{})
 	app.RegisterCommand(cmd.NewCmdFunc("start", cmd.GrpcCmd))
+	app.RegisterDefaultCommand(cmd.NewCmdFunc("start", cmd.GrpcCmd))
 	app.Execute()
 }

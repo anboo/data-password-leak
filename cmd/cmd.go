@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -31,43 +32,58 @@ func NewCmdFunc(name string, F func(ctx context.Context) error) C {
 }
 
 type App struct {
-	ctx      context.Context
-	commands []C
-	lock     sync.RWMutex
+	ctx            context.Context
+	commands       map[string]C
+	lock           sync.RWMutex
+	defaultCommand *C
 }
 
 func NewApp(ctx context.Context) *App {
-	return &App{ctx: ctx, commands: []C{}, lock: sync.RWMutex{}}
+	return &App{ctx: ctx, commands: map[string]C{}, lock: sync.RWMutex{}}
+}
+
+func (a *App) RegisterDefaultCommand(cmd C) {
+	a.defaultCommand = &cmd
 }
 
 func (a *App) RegisterCommand(cmd C) {
+	ex, _ := a.Find(cmd.Name())
+	if ex != nil {
+		log.Fatalf("Command %s already exists", cmd.Name())
+	}
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	a.commands = append(a.commands, cmd)
+	a.commands[cmd.Name()] = cmd
 }
 
 func (a *App) Find(name string) (C, error) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 
-	for _, c := range a.commands {
-		if c.Name() == name {
-			return c, nil
-		}
+	c, ok := a.commands[name]
+	if !ok {
+		return nil, fmt.Errorf("command %s not found", name)
 	}
 
-	return nil, fmt.Errorf("command not found")
+	return c, nil
 }
 
 func (a *App) Execute() {
-	if len(os.Args) < 2 {
-		panic("Cannot fetch command from os.Args. Expected \"start\" or etc")
-	}
+	var c C
+	var err error
 
-	c, err := a.Find(strings.Trim(os.Args[1], ""))
-	if err != nil {
-		panic(err.Error())
+	if len(os.Args) < 2 {
+		if a.defaultCommand == nil {
+			log.Fatalf("not found command")
+		}
+		c = *a.defaultCommand
+	} else {
+		c, err = a.Find(strings.Trim(os.Args[1], ""))
+		if err != nil {
+			panic(err.Error())
+		}
 	}
 
 	err = c.Run(a.ctx)
